@@ -13,17 +13,9 @@ from sentence_transformers import SentenceTransformer
 from openai import OpenAI
 from chromadb import PersistentClient
 
-
-# === 0. Load environment variables
-import streamlit as st
-
-
-# ────── Load OpenAI key from Streamlit Secrets ──────
-api_key = st.secrets["OPENAI_API_KEY"]
-os.environ["OPENAI_API_KEY"] = api_key  # in case other libs expect env var
-openai= OpenAI(api_key=api_key)
-# ────── Initialize the OpenAI client ──────
-
+# === 0. Load OpenAI API key from Streamlit Secrets
+api_key = st.secrets["OPENAI_API_KEY"].strip()
+openai = OpenAI(api_key=api_key)
 
 # === 1. Load models and DB (cache to avoid reloading)
 @st.cache_resource
@@ -44,11 +36,11 @@ def load_resources():
         last_name = author.strip().split()[-1].lower()
         last_name_index.setdefault(last_name, []).append(author)
 
-    return embedder, col, nlp, OpenAI(), last_name_index
+    return embedder, col, nlp, last_name_index
 
-embedder, col, nlp, openai_client, LAST_NAME_INDEX = load_resources()
+embedder, col, nlp, LAST_NAME_INDEX = load_resources()
 
-# === 2. Author & keyword extraction logic (same as your code)
+# === 2. Author & keyword extraction
 def extract_author(query: str) -> str | None:
     query_lc = query.lower()
     doc = nlp(query)
@@ -71,7 +63,7 @@ def extract_author(query: str) -> str | None:
 def extract_keywords(query: str) -> List[str]:
     return re.findall(r'\b\w+\b', query.lower())
 
-# === 3. Quote retrieval logic
+# === 3. Quote retrieval
 def retrieve_quotes(query: str, top_k: int = 5, overfetch: int = 25) -> List[Tuple[str, Dict[str, str], float]]:
     author = extract_author(query)
     keywords = extract_keywords(query)
@@ -99,7 +91,7 @@ def retrieve_quotes(query: str, top_k: int = 5, overfetch: int = 25) -> List[Tup
     filtered.sort(key=lambda x: x[2])
     return filtered[:top_k]
 
-# === 4. Build system prompt
+# === 4. Prompt formatting
 SYSTEM_PROMPT = (
     "You are a quote assistant. Use only the quotes provided below to answer the user's query. "
     "Return a JSON array with keys 'quote', 'author', 'tags' and write summary of the json output. Do not invent or modify quotes. "
@@ -122,13 +114,13 @@ def build_prompt(query: str, hits: List[Tuple[str, Dict[str, str], float]]) -> L
     })
     return messages
 
-# === 5. Final RAG pipeline
+# === 5. RAG pipeline
 def rag_quotes(query: str, top_k: int = 5) -> str:
     hits = retrieve_quotes(query, top_k=top_k)
     if not hits:
         return "not found"
     messages = build_prompt(query, hits)
-    response = openai_client.chat.completions.create(
+    response = openai.chat.completions.create(
         model="gpt-4o",
         messages=messages,
         temperature=0.3,
