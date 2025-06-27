@@ -1,5 +1,6 @@
 streamlit
 chromadb
+pysqlite3-binary
 sentence-transformers
 spacy
 openai
