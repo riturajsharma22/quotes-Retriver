@@ -1,11 +1,6 @@
 streamlit
-chromadb==0.4.22
+chromadb
 sentence-transformers
 spacy
 openai
-protobuf==3.20.3
-opentelemetry-api==1.22.0
-opentelemetry-sdk==1.22.0
-
-# spaCy model
-en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
+datasets
