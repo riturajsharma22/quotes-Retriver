@@ -1,17 +1,8 @@
-# Core app dependencies
-streamlit==1.26.0
-chromadb==0.4.22
-sentence-transformers==2.2.2
-spacy==3.7.2
-openai==1.12.0
-datasets==2.15.0
-
-# Compatibility fixes
-protobuf==3.20.3
-thinc==8.2.2
-numpy==1.23.5
-opentelemetry-api==1.22.0
-opentelemetry-sdk==1.22.0
-
+streamlit
+chromadb
+sentence-transformers
+spacy
+openai
+datasets
 # Required spaCy model
 en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
