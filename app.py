@@ -15,8 +15,15 @@ from chromadb import PersistentClient
 from dotenv import load_dotenv
 
 # === 0. Load environment variables
-load_dotenv()
-os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY", "your-key")
+import streamlit as st
+
+
+# ────── Load OpenAI key from Streamlit Secrets ──────
+api_key = st.secrets["OPENAI_API_KEY"]
+os.environ["OPENAI_API_KEY"] = api_key
+
+# ────── Initialize the OpenAI client ──────
+openai_client = OpenAI(api_key=api_key)
 
 # === 1. Load models and DB (cache to avoid reloading)
 @st.cache_resource
