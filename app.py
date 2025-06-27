@@ -42,66 +42,83 @@ embedder, col, nlp, LAST_NAME_INDEX = load_resources()
 
 # === 2. Author & keyword extraction
 def extract_author(query: str) -> str | None:
-    query_lc = query.lower()
+    query_lc = query.lower().strip()
+
+    # 1) regex “by <author>” at end of string
+    m = re.search(r'\bby\s+([A-Za-z ]+)$', query_lc)
+    if m:
+        candidate = m.group(1).strip()
+        last = candidate.split()[-1].lower()
+        if last in LAST_NAME_INDEX:
+            matches = [
+                a for a in LAST_NAME_INDEX[last]
+                if a.lower() == candidate or candidate in a.lower()
+            ]
+            return matches[0] if matches else LAST_NAME_INDEX[last][0]
+
+    # 2) SpaCy PERSON entity
     doc = nlp(query)
     for ent in doc.ents:
         if ent.label_ == "PERSON":
-            ent_text = ent.text.lower()
-            for last, authors in LAST_NAME_INDEX.items():
-                if last in ent_text or ent_text in last:
-                    return authors[0]
-    match = re.search(r'\bby\s+([a-z]+)', query_lc)
-    if match:
-        lname = match.group(1).lower()
-        if lname in LAST_NAME_INDEX:
-            return LAST_NAME_INDEX[lname][0]
-    for lname in LAST_NAME_INDEX:
-        if lname in query_lc:
-            return LAST_NAME_INDEX[lname][0]
+            last = ent.text.split()[-1].lower()
+            if last in LAST_NAME_INDEX:
+                return LAST_NAME_INDEX[last][0]
+
+    # 3) Last-resort substring on last names
+    for last, authors in LAST_NAME_INDEX.items():
+        if last in query_lc:
+            return authors[0]
+
     return None
 
 def extract_keywords(query: str) -> List[str]:
     return re.findall(r'\b\w+\b', query.lower())
 
-# === 3. Quote retrieval
-def retrieve_quotes(query: str, top_k: int = 5, overfetch: int = 25) -> List[Tuple[str, Dict[str, str], float]]:
-    author = extract_author(query)
+# === 3. Retrieve from ChromaDB with author + tag fallback ===
+def retrieve_quotes(query: str, top_k: int = 5, overfetch: int = 20):
+    author   = extract_author(query)
     keywords = extract_keywords(query)
-    q_emb = embedder.encode([query], normalize_embeddings=True)[0]
 
-    where_filter = {"author": author} if author else None
+    # Pull back an author‐filtered batch
     results = col.query(
-        query_embeddings=[q_emb],
+        query_embeddings=[embedder.encode([query], normalize_embeddings=True)[0]],
         n_results=overfetch,
-        where=where_filter,
+        where={"author": author} if author else None,
         include=["documents", "metadatas", "distances"]
     )
+    docs, metas, dists = (
+        results["documents"][0],
+        results["metadatas"][0],
+        results["distances"][0]
+    )
 
-    docs = results['documents'][0]
-    metas = results['metadatas'][0]
-    dists = results['distances'][0]
-
-    filtered = []
+    # First pass: require tag match
+    filtered: List[Tuple[str, Dict[str,str], float]] = []
     for doc, meta, dist in zip(docs, metas, dists):
-        tag_str = meta.get('tags', '').lower()
-        tag_words = set(tag.strip() for tag in tag_str.split(','))
-        if any(keyword in tag_words or keyword in tag_str for keyword in keywords):
+        tag_str  = meta.get("tags", "").lower()
+        tag_list = [t.strip() for t in tag_str.split(",") if t.strip()]
+        if any(kw in tag_list or kw in tag_str for kw in keywords):
             filtered.append((doc, meta, dist))
 
+    # Fallback: if no author+tag hits, show all author docs
+    if not filtered and author:
+        filtered = list(zip(docs, metas, dists))
+
+    # Sort by similarity and return top_k
     filtered.sort(key=lambda x: x[2])
     return filtered[:top_k]
 
-# === 4. Prompt formatting
+# === 4. Build system prompt for LLM ===
 SYSTEM_PROMPT = (
     "You are a quote assistant. Use only the quotes provided below to answer the user's query. "
-    "Return a JSON array with keys 'quote', 'author', 'tags' and write summary of the json output. Do not invent or modify quotes. "
+    "Return a not more than 3 JSON array with keys 'quote', 'author', 'tags' and summary of json array. Do not invent or modify quotes. "
     "If none match, respond with: not found"
 )
 
 def build_prompt(query: str, hits: List[Tuple[str, Dict[str, str], float]]) -> List[Dict[str, str]]:
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"Query: {query}\n\nHere are some candidate quotes:"}
+        {"role": "user",   "content": f"Query: {query}\n\nHere are some candidate quotes:"}
     ]
     for i, (doc, meta, dist) in enumerate(hits, 1):
         messages.append({
@@ -110,11 +127,14 @@ def build_prompt(query: str, hits: List[Tuple[str, Dict[str, str], float]]) -> L
         })
     messages.append({
         "role": "user",
-        "content": "Return matching quotes as JSON array with 'quote', 'author', 'tags' and summary. If none match, reply: not found"
+        "content": "Return matching quotes as JSON array with 'quote', 'author','tags' and summary of json array. If none match, reply: not found"
     })
     return messages
 
-# === 5. RAG pipeline
+# === 5. Query LLM ===
+os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY", "sk-...")
+openai = OpenAI()
+
 def rag_quotes(query: str, top_k: int = 5) -> str:
     hits = retrieve_quotes(query, top_k=top_k)
     if not hits:
@@ -127,7 +147,6 @@ def rag_quotes(query: str, top_k: int = 5) -> str:
         max_tokens=300
     )
     return response.choices[0].message.content
-
 # === 6. Streamlit UI
 st.set_page_config(page_title="Quote Retriever", page_icon="📚")
 st.title("🎙️ Quote Search with Tag + Author Enforcement")
