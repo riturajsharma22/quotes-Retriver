@@ -151,7 +151,7 @@ def rag_quotes(query: str, top_k: int = 5) -> str:
 st.set_page_config(page_title="Quote Retriever", page_icon="📚")
 st.title("RAG-Based Semantic Quote Retrieval and Structured QA")
 
-query = st.text_input("Enter your query (e.g. Love quotes Shakespeare)", "humor quotes by Oscar Wilde")
+query = st.text_input("Enter your query (e.g. Love quotes Shakespeare)", "truth memory quote by Mark Twain")
 
 if st.button("Search"):
     with st.spinner("Searching..."):
