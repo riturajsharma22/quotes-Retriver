@@ -13,11 +13,11 @@ from sentence_transformers import SentenceTransformer
 from openai import OpenAI
 from chromadb import PersistentClient
 
-# === 0. Load OpenAI API key from Streamlit Secrets
+# Load OpenAI API key from Streamlit Secrets
 api_key = st.secrets["OPENAI_API_KEY"].strip()
 openai = OpenAI(api_key=api_key)
 
-# === 1. Load models and DB (cache to avoid reloading)
+# Load models and DB 
 @st.cache_resource
 def load_resources():
     embedder = SentenceTransformer('rituraj18/quote-embedder-finetuned_ver_8')
@@ -40,11 +40,11 @@ def load_resources():
 
 embedder, col, nlp, LAST_NAME_INDEX = load_resources()
 
-# === 2. Author & keyword extraction
+# Author & keyword extraction
 def extract_author(query: str) -> str | None:
     query_lc = query.lower().strip()
 
-    # 1) regex “by <author>” at end of string
+    
     m = re.search(r'\bby\s+([A-Za-z ]+)$', query_lc)
     if m:
         candidate = m.group(1).strip()
@@ -74,7 +74,7 @@ def extract_author(query: str) -> str | None:
 def extract_keywords(query: str) -> List[str]:
     return re.findall(r'\b\w+\b', query.lower())
 
-# === 3. Retrieve from ChromaDB with author + tag fallback ===
+# Retrieve from ChromaDB with author + tag fallback 
 def retrieve_quotes(query: str, top_k: int = 5, overfetch: int = 20):
     author   = extract_author(query)
     keywords = extract_keywords(query)
@@ -108,7 +108,7 @@ def retrieve_quotes(query: str, top_k: int = 5, overfetch: int = 20):
     filtered.sort(key=lambda x: x[2])
     return filtered[:top_k]
 
-# === 4. Build system prompt for LLM ===
+# Build system prompt for LLM 
 SYSTEM_PROMPT = (
     "You are a quote assistant. Use only the quotes provided below to answer the user's query. "
     "Return a not more than 3 JSON array with keys 'quote', 'author', 'tags' and summary of json array. Do not invent or modify quotes. "
@@ -131,7 +131,7 @@ def build_prompt(query: str, hits: List[Tuple[str, Dict[str, str], float]]) -> L
     })
     return messages
 
-# === 5. Query LLM ===
+# Query LLM 
 os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY", "sk-...")
 openai = OpenAI()
 
@@ -147,9 +147,9 @@ def rag_quotes(query: str, top_k: int = 5) -> str:
         max_tokens=300
     )
     return response.choices[0].message.content
-# === 6. Streamlit UI
+# Streamlit UI
 st.set_page_config(page_title="Quote Retriever", page_icon="📚")
-st.title("🎙️ Quote Search with Tag + Author Enforcement")
+st.title("RAG-Based Semantic Quote Retrieval and Structured QA")
 
 query = st.text_input("Enter your query (e.g. Love quotes Shakespeare)", "humor quotes by Oscar Wilde")
 
